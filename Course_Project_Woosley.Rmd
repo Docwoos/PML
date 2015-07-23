@@ -1,0 +1,111 @@
+---
+title: "Proper Press"
+author: "Scott Woosley"
+date: "Monday, July 06, 2015"
+output: html_document
+---
+
+###The Goal:
+This projects goal is to predict the manner in which people did a specific exercise. This type of model can help those who workout using devices such as Jawbone Up, Nike FuelBand, and Fitbit with live assessments of their lifting proficieny without the aid of a trainer or workout buddy. Specifically this analysis focuses and whether people conducted barbell lifts correctly and incorrectly in 5 different ways.
+
+
+###Variables to predict with.
+There were 159 raw predictors and 1 dependent variable.  The dependent variable included 5 factors as indicated in the goal. Many of the variables were empty and some had nothing to do with movement.  A quick removal of those variables cut the potential predictors down to 52.  
+
+```{r,echo=FALSE,warning=FALSE}
+library(dplyr)
+library(caret)
+workout <- read.csv("E:/Continuing Education/Data Scientist/Practical Machine Learning/project/pml-training.csv")
+
+```
+```{r}
+workout[workout == ""] <- NA
+workout2<- workout[, colSums(is.na(workout)) == 0]
+workout2<-workout2[,c(-1,-2,-3,-4,-5,-6,-7)]
+workout3<-workout2[,c(-3,-4,-9,-10,-22)]
+pairs(workout2[1:100,1:5], pch = 21)
+```
+
+It was readily apparent from a quick review of just a handful of variables that many of them were highly correlated. I utilized a correlation matrix to further reduce the potential varaibles to 32.  
+
+
+```{r,echo=FALSE}
+
+workout3<-workout3[,c(-6,-7)]
+workout3<-workout3[,c(-31)]
+workout3<-workout3[,c(-7)]
+workout3<-workout3[,c(-15)]
+workout3<-workout3[,c(-10)]
+workout3<-workout3[,c(-11)]
+workout3<-workout3[,c(-13)]
+workout3<-workout3[,c(-14)]
+workout3<-workout3[,c(-22)]
+workout3<-workout3[,c(-20,-31)]
+workout3<-workout3[,c(-20)]
+workout3<-workout3[,c(-20)]
+workout3<-workout3[,c(-32)]
+workoutSamp<-sample(1:19622)
+workout4<-workout3[workoutSamp,]
+workout5<-workout3[,c("roll_belt","magnet_dumbbell_z","pitch_belt", "pitch_forearm", "magnet_dumbbell_x","roll_dumbbell","magnet_belt_y", "magnet_forearm_z", "total_accel_dumbbell","classe")]
+```
+In order to improve learning speed and limit overfitting I ran an RFE algorythm to rank the remaining predictors and reduce the total.  Based on the resulting plot I chose to use the top 9 predictors.
+
+```{r,warning=FALSE}
+# ensure the results are repeatable
+set.seed(7)
+# define the control using a random forest selection function
+control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+# run the RFE algorithm
+results <- rfe(workout4[,1:32], workout4[,33], sizes=c(1:10), rfeControl=control)
+# summarize the results
+print(results)
+# list the chosen features
+predictors(results)
+# plot the results
+plot(results, type=c("g", "o"))
+```
+
+
+###Describe how you built your model
+I included the following variables:
+```{r}
+names(workout5[,-10])
+```
+
+Initially I tested a few random forests, but eventually settled on a Generalized Boosted Regression Model. It accurately predicted model results with only 9 predictors and no preprocessing.  My attempts to use PCA did not result in favorable predictions. My model parsing(70% training, 30% testing) is listed below.  As you can see roll_belt clearly holds a large amount of the influence with a gradual drop-off down to magnet_forearm_z.
+
+
+```{r,warning=FALSE}
+inTrain <- createDataPartition(y=workout5$classe,p=0.7, list=FALSE)
+
+training <- workout5[inTrain,]
+testing <- workout5[-inTrain,]
+
+modFit3 <- train(training$classe~.,method="gbm", data=training)
+pred3 <- predict(modFit3, newdata=testing)
+```
+```{r,warning=FALSE}
+summary(modFit3)
+confusionMatrix(testing$classe, pred3)
+```
+
+###Cross validation
+I utilized a 10 k-fold cross validation in the selection of my variables in order to get a better prediction of which variables would likley predict well on the testing set.
+
+###Out of sample error
+The out of sample error is 1 minus the model accuracy when predicted on the test set so 1 - .9155 = ~8.5%.  The test against the 20 test cases resulted in 1/20 errors = 5%
+
+###Why I made the choices I did.
+
+I made the choices I made based primarily on 2 factors:
+1) Reducing the training time
+2) Controlling for overfitting
+
+###Predict on the 20 different test cases. I ran the predictions provided and achieved 19 out of 20 predictions.
+```{r,warnings}
+pml.testing <- read.csv("E:/Continuing Education/Data Scientist/Practical Machine Learning/project/pml-testing.csv")
+pred4 <- predict(modFit3, newdata=pml.testing)
+pred4
+```
+
+
